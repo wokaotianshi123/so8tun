@@ -30,7 +30,6 @@
 	],
 	"functions": {
 		"api/generate_params.py": {
-			"memory": 1024,
 			"maxDuration": 10
 		}
 	}
