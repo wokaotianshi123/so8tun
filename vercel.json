@@ -30,7 +30,7 @@
 	],
 	"functions": {
 		"api/generate_params.py": {
-			"runtime": "python3.10",
+			"runtime": "@vercel/python@3.10",
 			"memory": 1024,
 			"maxDuration": 10
 		}
