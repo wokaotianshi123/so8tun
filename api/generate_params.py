@@ -1,65 +1,78 @@
 import os
 import json
-import tempfile
+import wave
+import struct
+import math
 import numpy as np
-import librosa
-import scipy
 from starlette.applications import Starlette
 from starlette.responses import JSONResponse
 from starlette.requests import Request
 from starlette.routing import Route
-import uvicorn
 
-# 音频特征提取函数（核心逻辑不变，适配Vercel临时目录）
-def extract_audio_features(audio_path):
+# 轻量音频特征提取（仅用wave+numpy，无Librosa/SciPy）
+def extract_audio_features_light(audio_path):
     try:
-        y, sr = librosa.load(audio_path, sr=22050, mono=True)
-        duration = librosa.get_duration(y=y, sr=sr)
-        
+        # 仅支持WAV格式（MP3需额外处理，这里简化为WAV）
+        with wave.open(audio_path, 'rb') as wf:
+            n_channels = wf.getnchannels()
+            sample_width = wf.getsampwidth()
+            framerate = wf.getframerate()
+            n_frames = wf.getnframes()
+            duration = n_frames / framerate
+
+            # 读取音频数据
+            frames = wf.readframes(n_frames)
+            # 转换为数值数组（单声道）
+            if sample_width == 2:  # 16位PCM
+                fmt = f"{n_frames * n_channels}h"
+                data = struct.unpack(fmt, frames)
+                if n_channels > 1:
+                    data = np.array(data)[::2]  # 转单声道
+                data = np.array(data, dtype=np.float32) / 32768.0  # 归一化到[-1,1]
+            else:  # 8位PCM
+                fmt = f"{n_frames * n_channels}B"
+                data = struct.unpack(fmt, frames)
+                if n_channels > 1:
+                    data = np.array(data)[::2]
+                data = (np.array(data, dtype=np.float32) - 128) / 128.0
+
         # 1. 噪音段特征（前10秒）
-        noise_end = min(int(10 * sr), len(y))
-        noise_y = y[:noise_end]
-        noise_energy = np.sum(np.abs(noise_y)) / len(noise_y) if len(noise_y) > 0 else 0
-        noise_spec = librosa.amplitude_to_db(np.abs(librosa.stft(noise_y)), ref=np.max)
-        noise_low_freq_energy = np.mean(noise_spec[:10, :]) if len(noise_spec) > 10 else 0
-        
+        noise_frames = min(int(10 * framerate), len(data))
+        noise_data = data[:noise_frames]
+        noise_energy = np.sum(np.abs(noise_data)) / len(noise_data) if len(noise_data) > 0 else 0
+
         # 2. 人声段特征（10秒后）
-        voice_start = max(int(10 * sr), 0)
-        voice_end = min(int(60 * sr), len(y))
-        voice_y = y[voice_start:voice_end] if voice_end > voice_start else y
-        voice_rms = librosa.feature.rms(y=voice_y)[0]
-        voice_avg_volume = 20 * np.log10(np.mean(voice_rms) + 1e-8)
-        voice_peak_volume = 20 * np.log10(np.max(voice_rms) + 1e-8)
-        voice_min_volume = 20 * np.log10(np.min(voice_rms[voice_rms > 0]) + 1e-8) if len(voice_rms[voice_rms > 0]) > 0 else -80
+        voice_start = max(int(10 * framerate), 0)
+        voice_end = min(int(60 * framerate), len(data))
+        voice_data = data[voice_start:voice_end] if voice_end > voice_start else data
+        
+        # 音量计算（RMS）
+        voice_rms = np.sqrt(np.mean(np.square(voice_data))) if len(voice_data) > 0 else 0
+        voice_avg_volume = 20 * math.log10(voice_rms + 1e-8)
+        voice_peak_volume = 20 * math.log10(np.max(np.abs(voice_data)) + 1e-8) if len(voice_data) > 0 else -80
+        voice_min_volume = 20 * math.log10(np.min(np.abs(voice_data[voice_data > 0])) + 1e-8) if len(voice_data[voice_data > 0]) > 0 else -80
         voice_dynamic_range = voice_peak_volume - voice_min_volume
-        
-        # 3. 人声频谱特征
-        voice_spec = librosa.amplitude_to_db(np.abs(librosa.stft(voice_y)), ref=np.max)
-        high_freq_idx = librosa.fft_frequencies(sr=sr) > 5000
-        high_freq_energy = np.mean(voice_spec[high_freq_idx, :]) if np.any(high_freq_idx) else -80
-        mid_freq_idx = (librosa.fft_frequencies(sr=sr) > 1000) & (librosa.fft_frequencies(sr=sr) < 3000)
-        mid_freq_energy = np.mean(voice_spec[mid_freq_idx, :]) if np.any(mid_freq_idx) else -80
-        
-        # 4. 人声基频
-        f0, _ = librosa.pyin(voice_y, fmin=librosa.note_to_hz('C2'), fmax=librosa.note_to_hz('C7'))
-        f0_mean = np.nanmean(f0) if not np.all(np.isnan(f0)) else 0
-        
+
+        # 简易高频能量（通过采样点变化率判断）
+        if len(voice_data) > 1:
+            diff = np.abs(np.diff(voice_data))
+            high_freq_energy = np.mean(diff)  # 变化率高=高频多
+        else:
+            high_freq_energy = 0
+
         return {
             "duration": duration,
             "noise_energy": noise_energy,
-            "noise_low_freq_energy": noise_low_freq_energy,
             "voice_avg_volume": voice_avg_volume,
             "voice_peak_volume": voice_peak_volume,
             "voice_dynamic_range": voice_dynamic_range,
             "high_freq_energy": high_freq_energy,
-            "mid_freq_energy": mid_freq_energy,
-            "f0_mean": f0_mean,
             "success": True
         }
     except Exception as e:
         return {"success": False, "error": str(e)}
 
-# 参数生成函数
+# 参数生成函数（适配轻量特征）
 def generate_so8_params(form_data, audio_features=None):
     params = {
         "basic_knobs": "",
@@ -93,8 +106,6 @@ def generate_so8_params(form_data, audio_features=None):
             params["noise_reduction"] = "-60db"
         elif audio_features["noise_energy"] < 0.02:
             params["noise_reduction"] = "-82db"
-        if audio_features["noise_low_freq_energy"] > -40:
-            params["noise_reduction"] = f"{int(params['noise_reduction'].replace('db', '')) - 5}db"
     else:
         noise_level = form_data.get("noise_level")
         if noise_level == "quiet":
@@ -106,16 +117,14 @@ def generate_so8_params(form_data, audio_features=None):
     if "小声唱歌易断音" in form_data.get("voice_problem", ""):
         params["noise_reduction"] = f"{int(params['noise_reduction'].replace('db', '')) - 8}db"
     
-    # 3. 均衡器
+    # 3. 均衡器（基于声线+简易高频）
     eq_base = "q值统一4.5 | 高通12档(40hz) | 低通12档(12000hz) | "
     eq_custom = ""
     if audio_features and audio_features.get("success"):
-        if audio_features["high_freq_energy"] > -20:
+        if audio_features["high_freq_energy"] > 0.1:  # 高频多（刺耳）
             eq_custom += "5350hz增益-2.5 | 9500hz增益-2 | "
-        elif audio_features["high_freq_energy"] < -40:
+        elif audio_features["high_freq_energy"] < 0.02:  # 高频少（发闷）
             eq_custom += "5350hz增益+3 | 9500hz增益+2.5 | "
-        if audio_features["mid_freq_energy"] > -15:
-            eq_custom += "1350hz增益-3 | "
     if "有鼻音" in form_data.get("voice_problem", ""):
         eq_custom += "1350hz增益-2.5 | "
     if form_data.get("voice_type") == "thin":
@@ -168,9 +177,9 @@ def generate_so8_params(form_data, audio_features=None):
             tips.append("1. 人声平均音量较低，建议话筒音量提高2-3，压缩增益补偿+4；")
         if audio_features["noise_energy"] > 0.15:
             tips.append("2. 噪音能量较高，建议增加吸音棉/关闭门窗，降噪阈值可微调至-55db；")
-        if audio_features["high_freq_energy"] > -20:
+        if audio_features["high_freq_energy"] > 0.1:
             tips.append("3. 人声高频过强，若仍刺耳可将5350hz增益再减1；")
-        elif audio_features["high_freq_energy"] < -40:
+        elif audio_features["high_freq_energy"] < 0.02:
             tips.append("3. 人声高频不足，若声音发闷可将9500hz增益再+1；")
     if not tips:
         tips.append("1. 若唱歌爆音，可将录音音量再降低1-2；2. 若混响盖过人声，可降低混响音量或干湿比；")
@@ -180,7 +189,7 @@ def generate_so8_params(form_data, audio_features=None):
     
     return params
 
-# 处理OPTIONS请求（跨域预检）
+# OPTIONS请求处理
 async def options_handler(request: Request):
     return JSONResponse({}, headers={
         "Access-Control-Allow-Origin": "*",
@@ -188,12 +197,10 @@ async def options_handler(request: Request):
         "Access-Control-Allow-Headers": "Content-Type, Multipart/form-data"
     })
 
-# 核心接口处理函数
+# 核心接口处理
 async def generate_params_handler(request: Request):
     try:
-        # 解析表单数据
         form_data = await request.form()
-        # 提取文本参数
         text_params = {
             "mic_model": form_data.get("mic_model", ""),
             "phone_system": form_data.get("phone_system", ""),
@@ -204,51 +211,45 @@ async def generate_params_handler(request: Request):
             "voice_problem": form_data.get("voice_problem", "")
         }
         
-        # 处理音频文件
+        # 处理音频文件（仅支持WAV）
         audio_file = form_data.get("audio_file")
         audio_features = None
         if audio_file:
-            # 保存到Vercel临时目录
             temp_path = os.path.join("/tmp", audio_file.filename)
             with open(temp_path, "wb") as f:
                 f.write(await audio_file.read())
-            # 提取特征
-            audio_features = extract_audio_features(temp_path)
-            # 删除临时文件
+            # 轻量特征提取
+            audio_features = extract_audio_features_light(temp_path)
             os.remove(temp_path)
         
-        # 生成参数
         params = generate_so8_params(text_params, audio_features)
         
         return JSONResponse({
             "code": 200,
-            "msg": "参数生成成功",
+            "msg": "参数生成成功（轻量版）",
             "audio_features": audio_features,
             "params": params
-        }, headers={
-            "Access-Control-Allow-Origin": "*"
-        })
+        }, headers={"Access-Control-Allow-Origin": "*"})
     except Exception as e:
         return JSONResponse({
             "code": 500,
             "msg": f"参数生成失败：{str(e)}",
             "audio_features": None,
             "params": {}
-        }, headers={
-            "Access-Control-Allow-Origin": "*"
-        })
+        }, headers={"Access-Control-Allow-Origin": "*"})
 
-# 创建Starlette应用
+# 创建应用
 app = Starlette(debug=True, routes=[
     Route("/api/generate_params", generate_params_handler, methods=["POST"]),
     Route("/api/generate_params", options_handler, methods=["OPTIONS"])
 ])
 
-# Vercel Serverless入口
+# Vercel入口
 def handler(event, context):
     import mangum
     return mangum.Mangum(app)(event, context)
 
-# 本地测试入口
+# 本地测试
 if __name__ == "__main__":
+    import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
