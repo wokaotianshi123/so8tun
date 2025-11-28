@@ -1,3 +1,6 @@
+# 核心依赖（必须包含）
 numpy==1.26.4
 python-multipart==0.0.6
-pydub==0.25.1  # 轻量MP3解析库，依赖ffmpeg（Vercel已预装）
+pydub==0.25.1
+starlette==0.37.2  # 缺失的后端框架
+mangum==0.17.0     # Vercel Serverless适配库
