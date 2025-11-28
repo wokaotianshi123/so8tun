@@ -4,44 +4,35 @@ import wave
 import struct
 import math
 import warnings
+from io import BytesIO
+from urllib.parse import parse_qs
+import multipart  # python-multipart
 
-# 1. 忽略无关警告（pydub语法警告/ffmpeg检测警告）
-warnings.filterwarnings("ignore", category=SyntaxWarning)
-warnings.filterwarnings("ignore", category=RuntimeWarning)
+# 忽略无关警告
+warnings.filterwarnings("ignore")
 
-# 2. 强制指定Vercel内置的ffmpeg路径（关键修复）
+# 强制指定ffmpeg路径
 os.environ["FFMPEG_PATH"] = "/usr/bin/ffmpeg"
 os.environ["PYDUB_FFMPEG_PATH"] = "/usr/bin/ffmpeg"
-
-# 3. 导入依赖（确保starlette/mangum已安装）
-import numpy as np
 from pydub import AudioSegment
-from starlette.applications import Starlette
-from starlette.responses import JSONResponse
-from starlette.requests import Request
-from starlette.routing import Route
+import numpy as np
 
-# 通用音频特征提取（复用之前逻辑，已包含容错）
+# 音频特征提取（复用核心逻辑）
 def extract_audio_features(audio_path):
     try:
         if not audio_path.lower().endswith((".mp3", ".wav")):
             return {"success": False, "error": "仅支持MP3/WAV格式"}
         
-        # 强制指定ffmpeg路径
         AudioSegment.converter = "/usr/bin/ffmpeg"
-        AudioSegment.ffmpeg = "/usr/bin/ffmpeg"
-        
         temp_wav_path = "/tmp/temp_audio.wav"
-        try:
-            if audio_path.lower().endswith(".mp3"):
-                audio = AudioSegment.from_mp3(audio_path)
-            else:
-                audio = AudioSegment.from_wav(audio_path)
-        except Exception as e:
-            return {"success": False, "error": f"音频解码失败：{str(e)}（请确保是标准MP3/WAV格式）"}
+        
+        if audio_path.lower().endswith(".mp3"):
+            audio = AudioSegment.from_mp3(audio_path)
+        else:
+            audio = AudioSegment.from_wav(audio_path)
         
         audio = audio.set_channels(1).set_sample_width(2).set_frame_rate(44100)
-        audio.export(temp_wav_path, format="wav", bitrate="128k")
+        audio.export(temp_wav_path, format="wav")
 
         with wave.open(temp_wav_path, 'rb') as wf:
             framerate = wf.getframerate()
@@ -197,85 +188,170 @@ def generate_so8_params(form_data, audio_features=None):
     
     return params
 
-# OPTIONS请求处理
-async def options_handler(request: Request):
-    return JSONResponse({}, headers={
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "POST, OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type, Multipart/form-data"
-    })
-
-# 核心接口处理
-async def generate_params_handler(request: Request):
+# 解析multipart/form-data请求
+def parse_multipart(environ):
+    form_data = {}
+    audio_file = None
+    audio_filename = None
+    
     try:
-        form_data = await request.form()
-        text_params = {
-            "mic_model": form_data.get("mic_model", ""),
-            "phone_system": form_data.get("phone_system", ""),
-            "usage": form_data.get("usage", ""),
-            "song_style": form_data.get("song_style", ""),
-            "noise_level": form_data.get("noise_level", ""),
-            "voice_type": form_data.get("voice_type", ""),
-            "voice_problem": form_data.get("voice_problem", "")
-        }
-        
-        audio_file = form_data.get("audio_file")
-        audio_features = None
-        if audio_file:
-            if audio_file.size > 5 * 1024 * 1024:
-                return JSONResponse({
+        parser = multipart.FormParser(environ, strict=True)
+        for part in parser:
+            if part.filename is None:
+                # 文本字段
+                form_data[part.name] = part.value.decode('utf-8')
+            else:
+                # 音频文件
+                audio_filename = part.filename
+                audio_data = part.value
+                # 保存临时文件
+                temp_path = "/tmp/upload_audio"
+                with open(temp_path, 'wb') as f:
+                    f.write(audio_data)
+                audio_file = temp_path
+    except Exception as e:
+        return form_data, None, None, str(e)
+    
+    return form_data, audio_file, audio_filename, None
+
+# 核心WSGI处理函数
+def application(environ, start_response):
+    # 跨域头（全局）
+    headers = [
+        ('Access-Control-Allow-Origin', '*'),
+        ('Access-Control-Allow-Methods', 'POST, OPTIONS'),
+        ('Access-Control-Allow-Headers', 'Content-Type, Multipart/form-data'),
+        ('Content-Type', 'application/json; charset=utf-8')
+    ]
+    
+    # 处理OPTIONS预检请求
+    if environ['REQUEST_METHOD'] == 'OPTIONS':
+        start_response('200 OK', headers)
+        return [b'{}']
+    
+    # 处理POST请求
+    if environ['REQUEST_METHOD'] == 'POST':
+        try:
+            # 解析表单数据
+            form_data, audio_file, audio_filename, parse_err = parse_multipart(environ)
+            if parse_err:
+                response = json.dumps({
                     "code": 400,
-                    "msg": "音频文件大小不能超过5MB，请压缩后上传",
+                    "msg": f"表单解析失败：{parse_err}",
                     "audio_features": None,
                     "params": {}
-                }, headers={"Access-Control-Allow-Origin": "*"})
+                }).encode('utf-8')
+                start_response('400 Bad Request', headers)
+                return [response]
             
-            temp_path = "/tmp/upload_audio"
-            with open(temp_path, "wb") as f:
-                f.write(await audio_file.read())
+            # 处理音频文件
+            audio_features = None
+            if audio_file:
+                # 检查文件大小
+                file_size = os.path.getsize(audio_file)
+                if file_size > 5 * 1024 * 1024:
+                    os.remove(audio_file)
+                    response = json.dumps({
+                        "code": 400,
+                        "msg": "音频文件大小不能超过5MB",
+                        "audio_features": None,
+                        "params": {}
+                    }).encode('utf-8')
+                    start_response('400 Bad Request', headers)
+                    return [response]
+                
+                # 提取特征
+                audio_features = extract_audio_features(audio_file)
+                os.remove(audio_file)
             
-            audio_features = extract_audio_features(temp_path)
-            os.remove(temp_path)
+            # 生成参数
+            params = generate_so8_params(form_data, audio_features)
+            
+            # 构建响应
+            response = json.dumps({
+                "code": 200,
+                "msg": "参数生成成功",
+                "audio_features": audio_features,
+                "params": params
+            }, ensure_ascii=False).encode('utf-8')
+            
+            start_response('200 OK', headers)
+            return [response]
         
-        params = generate_so8_params(text_params, audio_features)
-        
-        return JSONResponse({
-            "code": 200,
-            "msg": "参数生成成功",
-            "audio_features": audio_features,
-            "params": params
-        }, headers={"Access-Control-Allow-Origin": "*"})
-    except Exception as e:
-        return JSONResponse({
-            "code": 500,
-            "msg": f"服务器内部错误：{str(e)}",
-            "audio_features": None,
-            "params": {}
-        }, headers={"Access-Control-Allow-Origin": "*"})
-
-# 创建应用
-app = Starlette(debug=False)
-app.add_route("/api/generate_params", generate_params_handler, methods=["POST"])
-app.add_route("/api/generate_params", options_handler, methods=["OPTIONS"])
-
-# Vercel入口
-def handler(event, context):
-    try:
-        import mangum
-        return mangum.Mangum(app)(event, context)
-    except Exception as e:
-        return {
-            "statusCode": 500,
-            "headers": {"Access-Control-Allow-Origin": "*"},
-            "body": json.dumps({
+        except Exception as e:
+            response = json.dumps({
                 "code": 500,
-                "msg": f"函数执行失败：{str(e)}",
+                "msg": f"服务器错误：{str(e)}",
                 "audio_features": None,
                 "params": {}
-            })
-        }
+            }, ensure_ascii=False).encode('utf-8')
+            start_response('500 Internal Server Error', headers)
+            return [response]
+    
+    # 其他请求方法
+    response = json.dumps({
+        "code": 405,
+        "msg": "仅支持POST/OPTIONS方法",
+        "audio_features": None,
+        "params": {}
+    }).encode('utf-8')
+    start_response('405 Method Not Allowed', headers)
+    return [response]
+
+# Vercel Serverless入口（WSGI适配）
+def handler(event, context):
+    from wsgiref.simple_server import make_server
+    from io import BytesIO
+    
+    # 构造WSGI environ
+    environ = {
+        'REQUEST_METHOD': event['httpMethod'],
+        'PATH_INFO': event['path'],
+        'QUERY_STRING': event['queryStringParameters'] or '',
+        'CONTENT_TYPE': event['headers'].get('content-type', ''),
+        'CONTENT_LENGTH': str(len(event['body'] or '')),
+        'SERVER_NAME': 'vercel',
+        'SERVER_PORT': '80',
+        'wsgi.input': BytesIO(event['body'].encode('utf-8') if event.get('body') else b''),
+        'wsgi.errors': BytesIO(),
+        'wsgi.multithread': False,
+        'wsgi.multiprocess': False,
+        'wsgi.run_once': False,
+        'wsgi.version': (1, 0),
+        'wsgi.url_scheme': 'https'
+    }
+    
+    # 添加headers到environ
+    for k, v in event['headers'].items():
+        key = f'HTTP_{k.replace("-", "_").upper()}'
+        environ[key] = v
+    
+    # 处理响应
+    response_body = []
+    status = None
+    response_headers = {}
+    
+    def start_response(s, h):
+        nonlocal status
+        status = s
+        for k, v in h:
+            response_headers[k] = v
+    
+    # 执行WSGI应用
+    result = application(environ, start_response)
+    for chunk in result:
+        response_body.append(chunk)
+    
+    # 构造Vercel响应
+    return {
+        'statusCode': int(status.split()[0]),
+        'headers': response_headers,
+        'body': b''.join(response_body).decode('utf-8')
+    }
 
 # 本地测试
 if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    from wsgiref.simple_server import make_server
+    server = make_server('0.0.0.0', 8000, application)
+    print("Local server running on http://0.0.0.0:8000")
+    server.serve_forever()
