@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>So8六代声卡 SKG调音台 参数定制工具（Vercel版）</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: "微软雅黑", sans-serif;
+        }
+        body {
+            background: #f5f7fa;
+            padding: 20px;
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+        .container {
+            background: white;
+            border-radius: 10px;
+            padding: 30px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 24px;
+        }
+        h2 {
+            color: #34495e;
+            font-size: 18px;
+            margin: 20px 0 10px;
+            padding-bottom: 5px;
+            border-bottom: 2px solid #3498db;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            color: #555;
+            font-weight: 500;
+        }
+        input, select, textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 14px;
+            outline: none;
+            transition: border 0.3s;
+        }
+        input:focus, select:focus, textarea:focus {
+            border-color: #3498db;
+        }
+        input[type="file"] {
+            padding: 3px;
+        }
+        button {
+            background: #3498db;
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 5px;
+            font-size: 16px;
+            cursor: pointer;
+            margin-top: 20px;
+            transition: background 0.3s;
+        }
+        button:hover {
+            background: #2980b9;
+        }
+        .result-area {
+            background: #f8f9fa;
+            border: 1px solid #eee;
+            border-radius: 5px;
+            padding: 20px;
+            margin-top: 20px;
+            display: none;
+        }
+        .result-area h3 {
+            color: #2c3e50;
+            margin-bottom: 15px;
+            font-size: 16px;
+        }
+        .param-item {
+            margin-bottom: 10px;
+            line-height: 1.8;
+        }
+        .param-title {
+            font-weight: bold;
+            color: #3498db;
+        }
+        .tips {
+            color: #e74c3c;
+            font-size: 12px;
+            margin-top: 5px;
+        }
+        .audio-analysis {
+            background: #e8f4fd;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 15px 0;
+            font-size: 13px;
+            color: #2c3e50;
+            display: none;
+        }
+        .loading {
+            color: #3498db;
+            margin-top: 10px;
+            display: none;
+        }
+        .error {
+            color: #e74c3c;
+            margin-top: 10px;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>So8六代声卡 SKG调音台 专属参数定制（Vercel版）</h1>
+        
+        <!-- 设备信息 -->
+        <h2>一、设备信息（必填）</h2>
+        <div class="form-group">
+            <label for="mic-model">话筒型号+类型（如：民歌MG205 动圈话筒）</label>
+            <input type="text" id="mic-model" placeholder="请输入话筒型号和类型，例：舒尔SM58 动圈话筒" required>
+        </div>
+        <div class="form-group">
+            <label for="headset-model">监听耳机型号</label>
+            <input type="text" id="headset-model" placeholder="例：森海塞尔HD201 头戴式耳机">
+        </div>
+        <div class="form-group">
+            <label for="phone-system">手机系统</label>
+            <select id="phone-system" required>
+                <option value="">请选择</option>
+                <option value="android">安卓</option>
+                <option value="ios">苹果</option>
+            </select>
+        </div>
+
+        <!-- 使用场景 -->
+        <h2>二、使用场景（必填）</h2>
+        <div class="form-group">
+            <label for="usage">核心用途</label>
+            <select id="usage" required>
+                <option value="">请选择</option>
+                <option value="sing-live">直播唱歌</option>
+                <option value="chat">语音聊天</option>
+                <option value="audio-book">有声小说</option>
+                <option value="video-record">短视频录音</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label for="song-style">常唱歌曲风格（可多选，用逗号分隔）</label>
+            <input type="text" id="song-style" placeholder="例：慢歌,民谣,rap" required>
+        </div>
+        <div class="form-group">
+            <label for="noise-level">环境噪音情况</label>
+            <select id="noise-level" required>
+                <option value="">请选择</option>
+                <option value="quiet">安静卧室（无明显噪音）</option>
+                <option value="slight">轻微环境音（如空调声）</option>
+                <option value="loud">噪音较明显（如窗外车流/人声）</option>
+            </select>
+        </div>
+
+        <!-- 声线特点 -->
+        <h2>三、声线特点（选填，精准度更高）</h2>
+        <div class="form-group">
+            <label for="voice-type">声线类型</label>
+            <select id="voice-type">
+                <option value="">请选择</option>
+                <option value="thin">偏细</option>
+                <option value="thick">偏浑厚</option>
+                <option value="high">偏高音</option>
+                <option value="low">偏低音</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label for="voice-problem">常见问题</label>
+            <textarea id="voice-problem" rows="2" placeholder="例：有鼻音、声音发闷、高频刺耳、小声唱歌易断音"></textarea>
+        </div>
+
+        <!-- 音频上传 -->
+        <h2>四、音频样本（建议上传）</h2>
+        <div class="form-group">
+            <label for="audio-file">上传音频（30-60秒，MP3/WAV格式）</label>
+            <input type="file" id="audio-file" accept=".mp3,.wav">
+            <p class="tips">音频要求：前10秒录环境噪音，中间20秒正常说话，最后10秒唱1句歌曲片段（用日常音量）</p>
+        </div>
+
+        <!-- 状态提示 -->
+        <div class="loading" id="loading">正在解析音频并生成参数，请稍候...</div>
+        <div class="error" id="error"></div>
+        
+        <!-- 音频分析结果 -->
+        <div class="audio-analysis" id="audio-analysis"></div>
+
+        <!-- 提交按钮 -->
+        <button id="generate-btn">生成专属调节参数</button>
+
+        <!-- 参数结果展示 -->
+        <div class="result-area" id="result-area">
+            <h3>✅ 你的So8六代声卡 SKG调音台专属参数</h3>
+            <div class="param-item">
+                <span class="param-title">1. 基础旋钮：</span>
+                <span id="basic-knobs"></span>
+            </div>
+            <div class="param-item">
+                <span class="param-title">2. 降噪阈值：</span>
+                <span id="noise-reduction"></span>
+            </div>
+            <div class="param-item">
+                <span class="param-title">3. 均衡器（专业模式，bell曲线）：</span>
+                <span id="eq-params"></span>
+            </div>
+            <div class="param-item">
+                <span class="param-title">4. 压缩器：</span>
+                <span id="compressor-params"></span>
+            </div>
+            <div class="param-item">
+                <span class="param-title">5. 混响：</span>
+                <span id="reverb-params"></span>
+            </div>
+            <div class="param-item">
+                <span class="param-title">6. 优化建议：</span>
+                <span id="optimize-tips"></span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Vercel API路径（自动适配当前域名）
+        const API_URL = "/api/generate_params";
+
+        // 监听提交按钮点击
+        document.getElementById('generate-btn').addEventListener('click', async function() {
+            // 重置状态
+            document.getElementById('loading').style.display = 'block';
+            document.getElementById('error').style.display = 'none';
+            document.getElementById('audio-analysis').style.display = 'none';
+            document.getElementById('result-area').style.display = 'none';
+
+            // 表单验证
+            const requiredFields = [
+                document.getElementById('mic-model'),
+                document.getElementById('phone-system'),
+                document.getElementById('usage'),
+                document.getElementById('song-style'),
+                document.getElementById('noise-level')
+            ];
+            for (const field of requiredFields) {
+                if (!field.value.trim()) {
+                    document.getElementById('error').textContent = `请填写必填项：${field.previousElementSibling.textContent}`;
+                    document.getElementById('error').style.display = 'block';
+                    document.getElementById('loading').style.display = 'none';
+                    return;
+                }
+            }
+
+            // 构建表单数据
+            const formData = new FormData();
+            formData.append('mic_model', document.getElementById('mic-model').value.trim());
+            formData.append('phone_system', document.getElementById('phone-system').value);
+            formData.append('usage', document.getElementById('usage').value);
+            formData.append('song_style', document.getElementById('song-style').value.trim());
+            formData.append('noise_level', document.getElementById('noise-level').value);
+            formData.append('voice_type', document.getElementById('voice-type').value);
+            formData.append('voice_problem', document.getElementById('voice-problem').value.trim());
+            
+            // 添加音频文件
+            const audioFile = document.getElementById('audio-file').files[0];
+            if (audioFile) {
+                // 限制文件大小（Vercel免费版单文件最大5MB）
+                if (audioFile.size > 5 * 1024 * 1024) {
+                    document.getElementById('error').textContent = "音频文件大小不能超过5MB，请压缩后上传！";
+                    document.getElementById('error').style.display = 'block';
+                    document.getElementById('loading').style.display = 'none';
+                    return;
+                }
+                formData.append('audio_file', audioFile);
+            }
+
+            try {
+                // 调用Vercel API
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const resData = await response.json();
+                if (resData.code === 200) {
+                    // 显示音频分析结果
+                    if (resData.audio_features && resData.audio_features.success) {
+                        const af = resData.audio_features;
+                        document.getElementById('audio-analysis').innerHTML = `
+                            🎵 音频深度解析结果：<br>
+                            - 音频时长：${af.duration.toFixed(1)}秒<br>
+                            - 噪音能量：${(af.noise_energy * 100).toFixed(2)}%（值越高噪音越大）<br>
+                            - 人声平均音量：${af.voice_avg_volume.toFixed(1)}dB<br>
+                            - 人声峰值音量：${af.voice_peak_volume.toFixed(1)}dB<br>
+                            - 人声动态范围：${af.voice_dynamic_range.toFixed(1)}dB<br>
+                            - 人声高频能量：${(af.high_freq_energy + 80).toFixed(2)}%（相对值）<br>
+                            - 人声平均基频：${af.f0_mean.toFixed(0)}Hz（值越高音越高）
+                        `;
+                        document.getElementById('audio-analysis').style.display = 'block';
+                    }
+
+                    // 渲染参数
+                    document.getElementById('basic-knobs').textContent = resData.params.basic_knobs;
+                    document.getElementById('noise-reduction').textContent = resData.params.noise_reduction;
+                    document.getElementById('eq-params').textContent = resData.params.eq_params;
+                    document.getElementById('compressor-params').textContent = resData.params.compressor_params;
+                    document.getElementById('reverb-params').textContent = resData.params.reverb_params;
+                    document.getElementById('optimize-tips').textContent = resData.params.optimize_tips;
+
+                    // 显示结果
+                    document.getElementById('result-area').style.display = 'block';
+                    document.getElementById('result-area').scrollIntoView({ behavior: 'smooth' });
+                } else {
+                    throw new Error(resData.msg || "参数生成失败");
+                }
+            } catch (e) {
+                document.getElementById('error').textContent = `错误：${e.message}`;
+                document.getElementById('error').style.display = 'block';
+            } finally {
+                document.getElementById('loading').style.display = 'none';
+            }
+        });
+    </script>
+</body>
+</html>
