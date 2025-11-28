@@ -4,37 +4,42 @@ import wave
 import struct
 import math
 import numpy as np
+from pydub import AudioSegment  # 新增：轻量音频格式转换
 from starlette.applications import Starlette
 from starlette.responses import JSONResponse
 from starlette.requests import Request
 from starlette.routing import Route
 
-# 轻量音频特征提取（仅用wave+numpy，无Librosa/SciPy）
-def extract_audio_features_light(audio_path):
+# 通用音频特征提取（支持MP3/WAV，基于pydub+原生库）
+def extract_audio_features(audio_path):
     try:
-        # 仅支持WAV格式（MP3需额外处理，这里简化为WAV）
-        with wave.open(audio_path, 'rb') as wf:
-            n_channels = wf.getnchannels()
-            sample_width = wf.getsampwidth()
+        # 步骤1：用pydub加载MP3/WAV，统一转为单声道WAV（临时文件）
+        temp_wav_path = os.path.join("/tmp", "temp_audio.wav")
+        if audio_path.lower().endswith(".mp3"):
+            audio = AudioSegment.from_mp3(audio_path)
+        elif audio_path.lower().endswith(".wav"):
+            audio = AudioSegment.from_wav(audio_path)
+        else:
+            return {"success": False, "error": "仅支持MP3/WAV格式"}
+        
+        # 转为单声道、16位、44100Hz（标准化）
+        audio = audio.set_channels(1).set_sample_width(2).set_frame_rate(44100)
+        audio.export(temp_wav_path, format="wav")
+
+        # 步骤2：解析WAV提取特征（复用之前的轻量逻辑）
+        with wave.open(temp_wav_path, 'rb') as wf:
             framerate = wf.getframerate()
             n_frames = wf.getnframes()
             duration = n_frames / framerate
 
-            # 读取音频数据
+            # 读取并转换音频数据
             frames = wf.readframes(n_frames)
-            # 转换为数值数组（单声道）
-            if sample_width == 2:  # 16位PCM
-                fmt = f"{n_frames * n_channels}h"
-                data = struct.unpack(fmt, frames)
-                if n_channels > 1:
-                    data = np.array(data)[::2]  # 转单声道
-                data = np.array(data, dtype=np.float32) / 32768.0  # 归一化到[-1,1]
-            else:  # 8位PCM
-                fmt = f"{n_frames * n_channels}B"
-                data = struct.unpack(fmt, frames)
-                if n_channels > 1:
-                    data = np.array(data)[::2]
-                data = (np.array(data, dtype=np.float32) - 128) / 128.0
+            fmt = f"{n_frames}h"  # 16位单声道
+            data = struct.unpack(fmt, frames)
+            data = np.array(data, dtype=np.float32) / 32768.0  # 归一化到[-1,1]
+
+        # 清理临时WAV文件
+        os.remove(temp_wav_path)
 
         # 1. 噪音段特征（前10秒）
         noise_frames = min(int(10 * framerate), len(data))
@@ -53,12 +58,8 @@ def extract_audio_features_light(audio_path):
         voice_min_volume = 20 * math.log10(np.min(np.abs(voice_data[voice_data > 0])) + 1e-8) if len(voice_data[voice_data > 0]) > 0 else -80
         voice_dynamic_range = voice_peak_volume - voice_min_volume
 
-        # 简易高频能量（通过采样点变化率判断）
-        if len(voice_data) > 1:
-            diff = np.abs(np.diff(voice_data))
-            high_freq_energy = np.mean(diff)  # 变化率高=高频多
-        else:
-            high_freq_energy = 0
+        # 简易高频能量（采样点变化率）
+        high_freq_energy = np.mean(np.abs(np.diff(voice_data))) if len(voice_data) > 1 else 0
 
         return {
             "duration": duration,
@@ -70,9 +71,9 @@ def extract_audio_features_light(audio_path):
             "success": True
         }
     except Exception as e:
-        return {"success": False, "error": str(e)}
+        return {"success": False, "error": f"音频解析失败：{str(e)}"}
 
-# 参数生成函数（适配轻量特征）
+# 参数生成函数（无需修改，复用之前逻辑）
 def generate_so8_params(form_data, audio_features=None):
     params = {
         "basic_knobs": "",
@@ -211,22 +212,35 @@ async def generate_params_handler(request: Request):
             "voice_problem": form_data.get("voice_problem", "")
         }
         
-        # 处理音频文件（仅支持WAV）
+        # 处理音频文件（支持MP3/WAV）
         audio_file = form_data.get("audio_file")
         audio_features = None
         if audio_file:
+            # 限制文件大小（≤5MB）
+            if audio_file.size > 5 * 1024 * 1024:
+                return JSONResponse({
+                    "code": 400,
+                    "msg": "音频文件大小不能超过5MB，请压缩后上传",
+                    "audio_features": None,
+                    "params": {}
+                }, headers={"Access-Control-Allow-Origin": "*"})
+            
+            # 保存临时文件
             temp_path = os.path.join("/tmp", audio_file.filename)
             with open(temp_path, "wb") as f:
                 f.write(await audio_file.read())
-            # 轻量特征提取
-            audio_features = extract_audio_features_light(temp_path)
+            
+            # 提取特征
+            audio_features = extract_audio_features(temp_path)
+            # 清理临时文件
             os.remove(temp_path)
         
+        # 生成参数
         params = generate_so8_params(text_params, audio_features)
         
         return JSONResponse({
             "code": 200,
-            "msg": "参数生成成功（轻量版）",
+            "msg": "参数生成成功",
             "audio_features": audio_features,
             "params": params
         }, headers={"Access-Control-Allow-Origin": "*"})
@@ -244,12 +258,12 @@ app = Starlette(debug=True, routes=[
     Route("/api/generate_params", options_handler, methods=["OPTIONS"])
 ])
 
-# Vercel入口
+# Vercel Serverless入口
 def handler(event, context):
     import mangum
     return mangum.Mangum(app)(event, context)
 
-# 本地测试
+# 本地测试入口
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
