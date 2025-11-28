@@ -3,62 +3,76 @@ import json
 import wave
 import struct
 import math
+import warnings
+
+# 1. 忽略无关警告（pydub语法警告/ffmpeg检测警告）
+warnings.filterwarnings("ignore", category=SyntaxWarning)
+warnings.filterwarnings("ignore", category=RuntimeWarning)
+
+# 2. 强制指定Vercel内置的ffmpeg路径（关键修复）
+os.environ["FFMPEG_PATH"] = "/usr/bin/ffmpeg"
+os.environ["PYDUB_FFMPEG_PATH"] = "/usr/bin/ffmpeg"
+
+# 3. 导入依赖（确保starlette/mangum已安装）
 import numpy as np
-from pydub import AudioSegment  # 新增：轻量音频格式转换
+from pydub import AudioSegment
 from starlette.applications import Starlette
 from starlette.responses import JSONResponse
 from starlette.requests import Request
 from starlette.routing import Route
 
-# 通用音频特征提取（支持MP3/WAV，基于pydub+原生库）
+# 通用音频特征提取（复用之前逻辑，已包含容错）
 def extract_audio_features(audio_path):
     try:
-        # 步骤1：用pydub加载MP3/WAV，统一转为单声道WAV（临时文件）
-        temp_wav_path = os.path.join("/tmp", "temp_audio.wav")
-        if audio_path.lower().endswith(".mp3"):
-            audio = AudioSegment.from_mp3(audio_path)
-        elif audio_path.lower().endswith(".wav"):
-            audio = AudioSegment.from_wav(audio_path)
-        else:
+        if not audio_path.lower().endswith((".mp3", ".wav")):
             return {"success": False, "error": "仅支持MP3/WAV格式"}
         
-        # 转为单声道、16位、44100Hz（标准化）
+        # 强制指定ffmpeg路径
+        AudioSegment.converter = "/usr/bin/ffmpeg"
+        AudioSegment.ffmpeg = "/usr/bin/ffmpeg"
+        
+        temp_wav_path = "/tmp/temp_audio.wav"
+        try:
+            if audio_path.lower().endswith(".mp3"):
+                audio = AudioSegment.from_mp3(audio_path)
+            else:
+                audio = AudioSegment.from_wav(audio_path)
+        except Exception as e:
+            return {"success": False, "error": f"音频解码失败：{str(e)}（请确保是标准MP3/WAV格式）"}
+        
         audio = audio.set_channels(1).set_sample_width(2).set_frame_rate(44100)
-        audio.export(temp_wav_path, format="wav")
+        audio.export(temp_wav_path, format="wav", bitrate="128k")
 
-        # 步骤2：解析WAV提取特征（复用之前的轻量逻辑）
         with wave.open(temp_wav_path, 'rb') as wf:
             framerate = wf.getframerate()
             n_frames = wf.getnframes()
+            if n_frames == 0:
+                os.remove(temp_wav_path)
+                return {"success": False, "error": "音频文件为空"}
             duration = n_frames / framerate
 
-            # 读取并转换音频数据
             frames = wf.readframes(n_frames)
-            fmt = f"{n_frames}h"  # 16位单声道
+            fmt = f"{n_frames}h"
             data = struct.unpack(fmt, frames)
-            data = np.array(data, dtype=np.float32) / 32768.0  # 归一化到[-1,1]
+            data = np.array(data, dtype=np.float32) / 32768.0
 
-        # 清理临时WAV文件
         os.remove(temp_wav_path)
 
-        # 1. 噪音段特征（前10秒）
         noise_frames = min(int(10 * framerate), len(data))
         noise_data = data[:noise_frames]
         noise_energy = np.sum(np.abs(noise_data)) / len(noise_data) if len(noise_data) > 0 else 0
 
-        # 2. 人声段特征（10秒后）
         voice_start = max(int(10 * framerate), 0)
         voice_end = min(int(60 * framerate), len(data))
         voice_data = data[voice_start:voice_end] if voice_end > voice_start else data
-        
-        # 音量计算（RMS）
+        if len(voice_data) == 0:
+            return {"success": False, "error": "人声段无有效音频数据"}
+
         voice_rms = np.sqrt(np.mean(np.square(voice_data))) if len(voice_data) > 0 else 0
         voice_avg_volume = 20 * math.log10(voice_rms + 1e-8)
         voice_peak_volume = 20 * math.log10(np.max(np.abs(voice_data)) + 1e-8) if len(voice_data) > 0 else -80
         voice_min_volume = 20 * math.log10(np.min(np.abs(voice_data[voice_data > 0])) + 1e-8) if len(voice_data[voice_data > 0]) > 0 else -80
         voice_dynamic_range = voice_peak_volume - voice_min_volume
-
-        # 简易高频能量（采样点变化率）
         high_freq_energy = np.mean(np.abs(np.diff(voice_data))) if len(voice_data) > 1 else 0
 
         return {
@@ -71,9 +85,9 @@ def extract_audio_features(audio_path):
             "success": True
         }
     except Exception as e:
-        return {"success": False, "error": f"音频解析失败：{str(e)}"}
+        return {"success": False, "error": f"特征提取失败：{str(e)}"}
 
-# 参数生成函数（无需修改，复用之前逻辑）
+# 参数生成函数（无修改）
 def generate_so8_params(form_data, audio_features=None):
     params = {
         "basic_knobs": "",
@@ -84,7 +98,6 @@ def generate_so8_params(form_data, audio_features=None):
         "optimize_tips": ""
     }
     
-    # 1. 基础旋钮
     mic_volume = 24
     record_volume = 25
     if "动圈" in form_data.get("mic_model", ""):
@@ -93,7 +106,6 @@ def generate_so8_params(form_data, audio_features=None):
         mic_volume = 22
     if form_data.get("usage") == "sing-live":
         record_volume = 24
-    # 音频适配
     if audio_features and audio_features.get("success"):
         if audio_features["voice_peak_volume"] > -10:
             record_volume = max(20, record_volume - 3)
@@ -101,7 +113,6 @@ def generate_so8_params(form_data, audio_features=None):
             record_volume = min(28, record_volume + 2)
     params["basic_knobs"] = f"话筒音量：{mic_volume} | 耳机音量：25 | 伴奏音量：23 | 录音音量：{record_volume} | 音效音量：18"
     
-    # 2. 降噪阈值
     if audio_features and audio_features.get("success"):
         if audio_features["noise_energy"] > 0.1:
             params["noise_reduction"] = "-60db"
@@ -118,13 +129,12 @@ def generate_so8_params(form_data, audio_features=None):
     if "小声唱歌易断音" in form_data.get("voice_problem", ""):
         params["noise_reduction"] = f"{int(params['noise_reduction'].replace('db', '')) - 8}db"
     
-    # 3. 均衡器（基于声线+简易高频）
     eq_base = "q值统一4.5 | 高通12档(40hz) | 低通12档(12000hz) | "
     eq_custom = ""
     if audio_features and audio_features.get("success"):
-        if audio_features["high_freq_energy"] > 0.1:  # 高频多（刺耳）
+        if audio_features["high_freq_energy"] > 0.1:
             eq_custom += "5350hz增益-2.5 | 9500hz增益-2 | "
-        elif audio_features["high_freq_energy"] < 0.02:  # 高频少（发闷）
+        elif audio_features["high_freq_energy"] < 0.02:
             eq_custom += "5350hz增益+3 | 9500hz增益+2.5 | "
     if "有鼻音" in form_data.get("voice_problem", ""):
         eq_custom += "1350hz增益-2.5 | "
@@ -134,7 +144,6 @@ def generate_so8_params(form_data, audio_features=None):
         eq_custom += "100hz增益-1.5 | 280hz增益-1.5 | "
     params["eq_params"] = eq_base + eq_custom + "100hz增益+2 | 140hz增益-1 | 280hz增益0 | 450hz增益+1.5 | 850hz增益-0.5 | 2800hz增益+1 | 10000hz增益+1.5"
     
-    # 4. 压缩器
     compressor_base = "压缩比4:1 | "
     threshold = "-15db（小嗓门）"
     attack_time = 440
@@ -153,7 +162,6 @@ def generate_so8_params(form_data, audio_features=None):
         release_time = 1500
     params["compressor_params"] = f"{compressor_base}阈值：{threshold} | 开始时间：{attack_time} | 释放时间：{release_time} | 增益补偿：+{gain_compensation}"
     
-    # 5. 混响
     dry_wet = 82
     reverb_vol = 22
     if audio_features and audio_features.get("success") and audio_features["voice_avg_volume"] < -20:
@@ -169,7 +177,6 @@ def generate_so8_params(form_data, audio_features=None):
     else:
         params["reverb_params"] = f"干湿比{dry_wet - 2}% | 混响音量{reverb_vol - 2} | 预延迟20ms | 混响时间4000ms"
     
-    # 6. 优化建议
     tips = []
     if audio_features and audio_features.get("success"):
         if audio_features["voice_peak_volume"] > -5:
@@ -212,11 +219,9 @@ async def generate_params_handler(request: Request):
             "voice_problem": form_data.get("voice_problem", "")
         }
         
-        # 处理音频文件（支持MP3/WAV）
         audio_file = form_data.get("audio_file")
         audio_features = None
         if audio_file:
-            # 限制文件大小（≤5MB）
             if audio_file.size > 5 * 1024 * 1024:
                 return JSONResponse({
                     "code": 400,
@@ -225,17 +230,13 @@ async def generate_params_handler(request: Request):
                     "params": {}
                 }, headers={"Access-Control-Allow-Origin": "*"})
             
-            # 保存临时文件
-            temp_path = os.path.join("/tmp", audio_file.filename)
+            temp_path = "/tmp/upload_audio"
             with open(temp_path, "wb") as f:
                 f.write(await audio_file.read())
             
-            # 提取特征
             audio_features = extract_audio_features(temp_path)
-            # 清理临时文件
             os.remove(temp_path)
         
-        # 生成参数
         params = generate_so8_params(text_params, audio_features)
         
         return JSONResponse({
@@ -247,23 +248,34 @@ async def generate_params_handler(request: Request):
     except Exception as e:
         return JSONResponse({
             "code": 500,
-            "msg": f"参数生成失败：{str(e)}",
+            "msg": f"服务器内部错误：{str(e)}",
             "audio_features": None,
             "params": {}
         }, headers={"Access-Control-Allow-Origin": "*"})
 
 # 创建应用
-app = Starlette(debug=True, routes=[
-    Route("/api/generate_params", generate_params_handler, methods=["POST"]),
-    Route("/api/generate_params", options_handler, methods=["OPTIONS"])
-])
+app = Starlette(debug=False)
+app.add_route("/api/generate_params", generate_params_handler, methods=["POST"])
+app.add_route("/api/generate_params", options_handler, methods=["OPTIONS"])
 
-# Vercel Serverless入口
+# Vercel入口
 def handler(event, context):
-    import mangum
-    return mangum.Mangum(app)(event, context)
+    try:
+        import mangum
+        return mangum.Mangum(app)(event, context)
+    except Exception as e:
+        return {
+            "statusCode": 500,
+            "headers": {"Access-Control-Allow-Origin": "*"},
+            "body": json.dumps({
+                "code": 500,
+                "msg": f"函数执行失败：{str(e)}",
+                "audio_features": None,
+                "params": {}
+            })
+        }
 
-# 本地测试入口
+# 本地测试
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
