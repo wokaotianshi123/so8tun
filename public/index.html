@@ -190,11 +190,12 @@
 
         <!-- 音频上传 -->
         <h2>四、音频样本（建议上传）</h2>
-        <div class="form-group">
-            <label for="audio-file">上传音频（30-60秒，WAV格式）</label>
-            <input type="file" id="audio-file" accept=".wav">
-            <p class="tips">音频要求：WAV格式，30-60秒，前10秒录环境噪音，中间20秒正常说话，最后10秒唱1句歌曲片段（用日常音量）</p>
-        </div>
+<!-- 音频上传部分修改 -->
+<div class="form-group">
+    <label for="audio-file">上传音频（30-60秒，MP3/WAV格式）</label>
+    <input type="file" id="audio-file" accept=".mp3,.wav">
+    <p class="tips">音频要求：≤5MB，前10秒录环境噪音，中间20秒正常说话，最后10秒唱1句歌曲片段（用日常音量）</p>
+</div>
 
         <!-- 状态提示 -->
         <div class="loading" id="loading">正在解析音频并生成参数，请稍候...</div>
@@ -338,3 +339,4 @@
 </body>
 
 </html>
+
