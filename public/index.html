@@ -3,245 +3,358 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>So8六代声卡 SKG调音台 参数定制工具（Vercel版）</title>
+    <title>So8声卡参数生成器</title>
     <style>
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
-            font-family: "微软雅黑", sans-serif;
+            font-family: "Microsoft Yahei", sans-serif;
         }
         body {
-            background: #f5f7fa;
-            padding: 20px;
-            max-width: 1000px;
+            max-width: 800px;
             margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
         }
         .container {
             background: white;
-            border-radius: 10px;
             padding: 30px;
+            border-radius: 10px;
             box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            margin-bottom: 20px;
         }
         h1 {
-            color: #2c3e50;
             text-align: center;
+            color: #333;
             margin-bottom: 30px;
-            font-size: 24px;
-        }
-        h2 {
-            color: #34495e;
-            font-size: 18px;
-            margin: 20px 0 10px;
-            padding-bottom: 5px;
-            border-bottom: 2px solid #3498db;
         }
         .form-group {
-            margin-bottom: 15px;
+            margin-bottom: 20px;
         }
         label {
             display: block;
-            margin-bottom: 5px;
+            margin-bottom: 8px;
+            font-weight: bold;
             color: #555;
-            font-weight: 500;
         }
         input, select, textarea {
             width: 100%;
             padding: 10px;
             border: 1px solid #ddd;
             border-radius: 5px;
-            font-size: 14px;
-            outline: none;
-            transition: border 0.3s;
-        }
-        input:focus, select:focus, textarea:focus {
-            border-color: #3498db;
-        }
-        input[type="file"] {
-            padding: 3px;
+            font-size: 16px;
         }
         button {
-            background: #3498db;
+            width: 100%;
+            padding: 12px;
+            background-color: #007bff;
             color: white;
             border: none;
-            padding: 12px 30px;
             border-radius: 5px;
-            font-size: 16px;
+            font-size: 18px;
             cursor: pointer;
-            margin-top: 20px;
-            transition: background 0.3s;
+            margin-top: 10px;
         }
         button:hover {
-            background: #2980b9;
+            background-color: #0056b3;
         }
-        .result-area {
-            background: #f8f9fa;
-            border: 1px solid #eee;
-            border-radius: 5px;
-            padding: 20px;
-            margin-top: 20px;
+        #loading {
+            text-align: center;
+            margin: 20px 0;
+            display: none;
+            color: #007bff;
+        }
+        #error {
+            color: red;
+            text-align: center;
+            margin: 20px 0;
             display: none;
         }
-        .result-area h3 {
-            color: #2c3e50;
+        #audio-analysis {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 20px 0;
+            display: none;
+        }
+        #result-area {
+            margin-top: 30px;
+            display: none;
+        }
+        .result-item {
             margin-bottom: 15px;
-            font-size: 16px;
+            padding: 10px;
+            background-color: #f8f9fa;
+            border-radius: 5px;
         }
-        .param-item {
-            margin-bottom: 10px;
-            line-height: 1.8;
-        }
-        .param-title {
-            font-weight: bold;
-            color: #3498db;
+        .result-item h3 {
+            margin-bottom: 8px;
+            color: #333;
         }
         .tips {
-            color: #e74c3c;
-            font-size: 12px;
+            font-size: 14px;
+            color: #666;
             margin-top: 5px;
-        }
-        .audio-analysis {
-            background: #e8f4fd;
-            padding: 10px;
-            border-radius: 5px;
-            margin: 15px 0;
-            font-size: 13px;
-            color: #2c3e50;
-            display: none;
-        }
-        .loading {
-            color: #3498db;
-            margin-top: 10px;
-            display: none;
-        }
-        .error {
-            color: #e74c3c;
-            margin-top: 10px;
-            display: none;
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>So8六代声卡 SKG调音台 专属参数定制（Vercel版）</h1>
+        <h1>So8声卡参数生成器</h1>
         
-        <!-- 设备信息 -->
-        <h2>一、设备信息（必填）</h2>
         <div class="form-group">
-            <label for="mic-model">话筒型号+类型（如：民歌MG205 动圈话筒）</label>
-            <input type="text" id="mic-model" placeholder="请输入话筒型号和类型，例：舒尔SM58 动圈话筒" required>
+            <label for="mic-model">话筒型号（必填）</label>
+            <input type="text" id="mic-model" placeholder="例如：动圈麦/电容麦/手持麦/领夹麦">
         </div>
+        
         <div class="form-group">
-            <label for="headset-model">监听耳机型号</label>
-            <input type="text" id="headset-model" placeholder="例：森海塞尔HD201 头戴式耳机">
-        </div>
-        <div class="form-group">
-            <label for="phone-system">手机系统</label>
-            <select id="phone-system" required>
-                <option value="">请选择</option>
+            <label for="phone-system">手机系统（必填）</label>
+            <select id="phone-system">
                 <option value="android">安卓</option>
-                <option value="ios">苹果</option>
+                <option value="ios">iOS</option>
             </select>
         </div>
-
-        <!-- 使用场景 -->
-        <h2>二、使用场景（必填）</h2>
+        
         <div class="form-group">
-            <label for="usage">核心用途</label>
-            <select id="usage" required>
-                <option value="">请选择</option>
-                <option value="sing-live">直播唱歌</option>
-                <option value="chat">语音聊天</option>
-                <option value="audio-book">有声小说</option>
-                <option value="video-record">短视频录音</option>
+            <label for="usage">使用场景（必填）</label>
+            <select id="usage">
+                <option value="sing-live">唱歌直播</option>
+                <option value="chat">聊天/电台</option>
+                <option value="audio-book">有声书/配音</option>
+                <option value="other">其他</option>
             </select>
         </div>
+        
         <div class="form-group">
-            <label for="song-style">常唱歌曲风格（可多选，用逗号分隔）</label>
-            <input type="text" id="song-style" placeholder="例：慢歌,民谣,rap" required>
+            <label for="song-style">歌曲风格（必填）</label>
+            <input type="text" id="song-style" placeholder="例如：流行/古风/说唱/民谣/快歌/慢歌">
         </div>
+        
         <div class="form-group">
-            <label for="noise-level">环境噪音情况</label>
-            <select id="noise-level" required>
-                <option value="">请选择</option>
-                <option value="quiet">安静卧室（无明显噪音）</option>
-                <option value="slight">轻微环境音（如空调声）</option>
-                <option value="loud">噪音较明显（如窗外车流/人声）</option>
+            <label for="noise-level">环境噪音（必填）</label>
+            <select id="noise-level">
+                <option value="quiet">安静（无杂音）</option>
+                <option value="slight">轻微（有一点杂音）</option>
+                <option value="loud">嘈杂（噪音明显）</option>
             </select>
         </div>
-
-        <!-- 声线特点 -->
-        <h2>三、声线特点（选填，精准度更高）</h2>
+        
         <div class="form-group">
             <label for="voice-type">声线类型</label>
             <select id="voice-type">
-                <option value="">请选择</option>
-                <option value="thin">偏细</option>
-                <option value="thick">偏浑厚</option>
-                <option value="high">偏高音</option>
-                <option value="low">偏低音</option>
+                <option value="normal">正常</option>
+                <option value="thin">偏细/尖</option>
+                <option value="thick">偏粗/闷</option>
             </select>
         </div>
-        <div class="form-group">
-            <label for="voice-problem">常见问题</label>
-            <textarea id="voice-problem" rows="2" placeholder="例：有鼻音、声音发闷、高频刺耳、小声唱歌易断音"></textarea>
-        </div>
-
-        <!-- 音频上传 -->
-        <h2>四、音频样本（建议上传）</h2>
-<!-- 音频上传部分修改 -->
-<div class="form-group">
-    <label for="audio-file">上传音频（30-60秒，MP3/WAV格式）</label>
-    <input type="file" id="audio-file" accept=".mp3,.wav">
-    <p class="tips">音频要求：≤5MB，前10秒录环境噪音，中间20秒正常说话，最后10秒唱1句歌曲片段（用日常音量）</p>
-</div>
-
-        <!-- 状态提示 -->
-        <div class="loading" id="loading">正在解析音频并生成参数，请稍候...</div>
-        <div class="error" id="error"></div>
         
-        <!-- 音频分析结果 -->
-        <div class="audio-analysis" id="audio-analysis"></div>
-
-        <!-- 提交按钮 -->
-        <button id="generate-btn">生成专属调节参数</button>
-
-        <!-- 参数结果展示 -->
-        <div class="result-area" id="result-area">
-            <h3>✅ 你的So8六代声卡 SKG调音台专属参数</h3>
-            <div class="param-item">
-                <span class="param-title">1. 基础旋钮：</span>
-                <span id="basic-knobs"></span>
+        <div class="form-group">
+            <label for="voice-problem">人声问题</label>
+            <input type="text" id="voice-problem" placeholder="例如：有鼻音/小声唱歌易断音/声音刺耳/发闷">
+        </div>
+        
+        <div class="form-group">
+            <label for="audio-file">上传音频（可选，30-60秒MP3/WAV）</label>
+            <input type="file" id="audio-file" accept=".mp3,.wav">
+            <p class="tips">音频要求：≤5MB，前10秒录环境噪音，中间20秒正常说话，最后10秒唱1句歌曲片段</p>
+        </div>
+        
+        <button id="generate-btn">生成参数</button>
+        
+        <div id="loading">加载中...正在分析音频和生成参数</div>
+        <div id="error"></div>
+        <div id="audio-analysis"></div>
+        
+        <div id="result-area">
+            <div class="result-item">
+                <h3>基础旋钮参数</h3>
+                <p id="basic-knobs"></p>
             </div>
-            <div class="param-item">
-                <span class="param-title">2. 降噪阈值：</span>
-                <span id="noise-reduction"></span>
+            <div class="result-item">
+                <h3>降噪阈值</h3>
+                <p id="noise-reduction"></p>
             </div>
-            <div class="param-item">
-                <span class="param-title">3. 均衡器（专业模式，bell曲线）：</span>
-                <span id="eq-params"></span>
+            <div class="result-item">
+                <h3>均衡器参数</h3>
+                <p id="eq-params"></p>
             </div>
-            <div class="param-item">
-                <span class="param-title">4. 压缩器：</span>
-                <span id="compressor-params"></span>
+            <div class="result-item">
+                <h3>压缩器参数</h3>
+                <p id="compressor-params"></p>
             </div>
-            <div class="param-item">
-                <span class="param-title">5. 混响：</span>
-                <span id="reverb-params"></span>
+            <div class="result-item">
+                <h3>混响参数</h3>
+                <p id="reverb-params"></p>
             </div>
-            <div class="param-item">
-                <span class="param-title">6. 优化建议：</span>
-                <span id="optimize-tips"></span>
+            <div class="result-item">
+                <h3>优化建议</h3>
+                <p id="optimize-tips"></p>
             </div>
         </div>
     </div>
 
     <script>
-        // Vercel API路径（自动适配当前域名）
-        const API_URL = "/api/generate_params";
+        // 前端音频特征提取（Web Audio API）
+        async function extractAudioFeatures(audioFile) {
+            try {
+                const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const arrayBuffer = await audioFile.arrayBuffer();
+                const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+                
+                // 获取单声道数据
+                const channelData = audioBuffer.getChannelData(0);
+                const sampleRate = audioBuffer.sampleRate;
+                const duration = audioBuffer.duration;
 
-        // 监听提交按钮点击
+                // 1. 噪音段（前10秒）
+                const noiseFrames = Math.min(Math.floor(10 * sampleRate), channelData.length);
+                const noiseData = channelData.slice(0, noiseFrames);
+                const noiseEnergy = noiseData.reduce((sum, val) => sum + Math.abs(val), 0) / (noiseFrames || 1);
+
+                // 2. 人声段（10秒后）
+                const voiceStart = Math.max(Math.floor(10 * sampleRate), 0);
+                const voiceEnd = Math.min(Math.floor(60 * sampleRate), channelData.length);
+                const voiceData = voiceEnd > voiceStart ? channelData.slice(voiceStart, voiceEnd) : channelData;
+                
+                // 音量计算（RMS）
+                const voiceRms = Math.sqrt(voiceData.reduce((sum, val) => sum + val * val, 0) / (voiceData.length || 1));
+                const voiceAvgVolume = 20 * Math.log10(voiceRms + 1e-8);
+                const voicePeak = Math.max(...voiceData.map(Math.abs));
+                const voicePeakVolume = 20 * Math.log10(voicePeak + 1e-8);
+                const voiceMin = Math.min(...voiceData.filter(val => val > 0).map(Math.abs));
+                const voiceMinVolume = 20 * Math.log10((voiceMin || 1e-8) + 1e-8);
+                const voiceDynamicRange = voicePeakVolume - voiceMinVolume;
+
+                // 高频能量（采样点变化率）
+                let highFreqEnergy = 0;
+                if (voiceData.length > 1) {
+                    let diffSum = 0;
+                    for (let i = 1; i < voiceData.length; i++) {
+                        diffSum += Math.abs(voiceData[i] - voiceData[i-1]);
+                    }
+                    highFreqEnergy = diffSum / (voiceData.length - 1);
+                }
+
+                return {
+                    duration: duration.toFixed(1),
+                    noiseEnergy: (noiseEnergy * 100).toFixed(2),
+                    voiceAvgVolume: voiceAvgVolume.toFixed(1),
+                    voicePeakVolume: voicePeakVolume.toFixed(1),
+                    voiceDynamicRange: voiceDynamicRange.toFixed(1),
+                    highFreqEnergy: (highFreqEnergy * 100).toFixed(2),
+                    success: true
+                };
+            } catch (e) {
+                return {
+                    success: false,
+                    error: `音频解析失败：${e.message}`
+                };
+            }
+        }
+
+        // 参数生成核心逻辑
+        function generateSo8Params(formData, audioFeatures = null) {
+            const params = {
+                basicKnobs: "",
+                noiseReduction: "-70db",
+                eqParams: "",
+                compressorParams: "",
+                reverbParams: "",
+                optimizeTips: ""
+            };
+
+            // 1. 基础旋钮
+            let micVolume = 24;
+            let recordVolume = 25;
+            if (formData.micModel.includes("动圈")) micVolume = 26;
+            else if (formData.micModel.includes("电容")) micVolume = 22;
+            if (formData.usage === "sing-live") recordVolume = 24;
+            
+            // 音频适配
+            if (audioFeatures?.success) {
+                if (parseFloat(audioFeatures.voicePeakVolume) > -10) recordVolume = Math.max(20, recordVolume - 3);
+                else if (parseFloat(audioFeatures.voicePeakVolume) < -25) recordVolume = Math.min(28, recordVolume + 2);
+            }
+            params.basicKnobs = `话筒音量：${micVolume} | 耳机音量：25 | 伴奏音量：23 | 录音音量：${recordVolume} | 音效音量：18`;
+
+            // 2. 降噪阈值
+            if (audioFeatures?.success) {
+                if (parseFloat(audioFeatures.noiseEnergy) > 0.1) params.noiseReduction = "-60db";
+                else if (parseFloat(audioFeatures.noiseEnergy) < 0.02) params.noiseReduction = "-82db";
+            } else {
+                switch (formData.noiseLevel) {
+                    case "quiet": params.noiseReduction = "-80db"; break;
+                    case "slight": params.noiseReduction = "-75db"; break;
+                    case "loud": params.noiseReduction = "-65db"; break;
+                }
+            }
+            if (formData.voiceProblem.includes("小声唱歌易断音")) {
+                const val = parseInt(params.noiseReduction);
+                params.noiseReduction = `${val - 8}db`;
+            }
+
+            // 3. 均衡器
+            let eqBase = "q值统一4.5 | 高通12档(40hz) | 低通12档(12000hz) | ";
+            let eqCustom = "";
+            if (audioFeatures?.success) {
+                if (parseFloat(audioFeatures.highFreqEnergy) > 0.1) eqCustom += "5350hz增益-2.5 | 9500hz增益-2 | ";
+                else if (parseFloat(audioFeatures.highFreqEnergy) < 0.02) eqCustom += "5350hz增益+3 | 9500hz增益+2.5 | ";
+            }
+            if (formData.voiceProblem.includes("有鼻音")) eqCustom += "1350hz增益-2.5 | ";
+            if (formData.voiceType === "thin") eqCustom += "100hz增益+3.5 | 450hz增益+2.5 | ";
+            if (formData.voiceType === "thick") eqCustom += "100hz增益-1.5 | 280hz增益-1.5 | ";
+            params.eqParams = eqBase + eqCustom + "100hz增益+2 | 140hz增益-1 | 280hz增益0 | 450hz增益+1.5 | 850hz增益-0.5 | 2800hz增益+1 | 10000hz增益+1.5";
+
+            // 4. 压缩器
+            let compressorBase = "压缩比4:1 | ";
+            let threshold = "-15db（小嗓门）";
+            let attackTime = 440;
+            let releaseTime = 1700;
+            let gainCompensation = 2;
+            
+            if (audioFeatures?.success) {
+                if (parseFloat(audioFeatures.voiceAvgVolume) > -15) threshold = "-25db（大嗓门）";
+                else if (parseFloat(audioFeatures.voiceAvgVolume) < -25) threshold = "-12db（小嗓门）";
+                if (parseFloat(audioFeatures.voiceDynamicRange) > 20) releaseTime = 1800;
+                gainCompensation = parseFloat(audioFeatures.voiceAvgVolume) < -20 ? 3 : 2;
+            }
+            if (formData.songStyle.includes("快歌") || formData.songStyle.includes("rap")) {
+                attackTime = 800;
+                releaseTime = 1500;
+            }
+            params.compressorParams = `${compressorBase}阈值：${threshold} | 开始时间：${attackTime} | 释放时间：${releaseTime} | 增益补偿：+${gainCompensation}`;
+
+            // 5. 混响
+            let dryWet = 82;
+            let reverbVol = 22;
+            if (audioFeatures?.success && parseFloat(audioFeatures.voiceAvgVolume) < -20) {
+                dryWet = 78;
+                reverbVol = 18;
+            }
+            switch (formData.usage) {
+                case "sing-live": params.reverbParams = `干湿比${dryWet}% | 混响音量${reverbVol} | 预延迟18ms | 混响时间4600ms`; break;
+                case "chat": params.reverbParams = `干湿比${dryWet - 10}% | 混响音量${reverbVol - 7} | 预延迟15ms | 混响时间3000ms`; break;
+                case "audio-book": params.reverbParams = `干湿比${dryWet - 20}% | 混响音量${reverbVol - 12} | 预延迟10ms | 混响时间2000ms`; break;
+                default: params.reverbParams = `干湿比${dryWet - 2}% | 混响音量${reverbVol - 2} | 预延迟20ms | 混响时间4000ms`;
+            }
+
+            // 6. 优化建议
+            const tips = [];
+            if (audioFeatures?.success) {
+                if (parseFloat(audioFeatures.voicePeakVolume) > -5) tips.push("1. 人声峰值音量较高，建议录音音量再降低2-3，避免爆音；");
+                else if (parseFloat(audioFeatures.voiceAvgVolume) < -30) tips.push("1. 人声平均音量较低，建议话筒音量提高2-3，压缩增益补偿+4；");
+                if (parseFloat(audioFeatures.noiseEnergy) > 0.15) tips.push("2. 噪音能量较高，建议增加吸音棉/关闭门窗，降噪阈值可微调至-55db；");
+                if (parseFloat(audioFeatures.highFreqEnergy) > 0.1) tips.push("3. 人声高频过强，若仍刺耳可将5350hz增益再减1；");
+                else if (parseFloat(audioFeatures.highFreqEnergy) < 0.02) tips.push("3. 人声高频不足，若声音发闷可将9500hz增益再+1；");
+            }
+            if (tips.length === 0) tips.push("1. 若唱歌爆音，可将录音音量再降低1-2；2. 若混响盖过人声，可降低混响音量或干湿比；");
+            if (formData.voiceProblem.includes("鼻音")) tips.push("4. 若鼻音仍明显，可将1350hz增益再减1；");
+            params.optimizeTips = tips.join("");
+
+            return params;
+        }
+
+        // 绑定按钮事件
         document.getElementById('generate-btn').addEventListener('click', async function() {
             // 重置状态
             document.getElementById('loading').style.display = 'block';
@@ -250,93 +363,83 @@
             document.getElementById('result-area').style.display = 'none';
 
             // 表单验证
-            const requiredFields = [
-                document.getElementById('mic-model'),
-                document.getElementById('phone-system'),
-                document.getElementById('usage'),
-                document.getElementById('song-style'),
-                document.getElementById('noise-level')
-            ];
-            for (const field of requiredFields) {
-                if (!field.value.trim()) {
-                    document.getElementById('error').textContent = `请填写必填项：${field.previousElementSibling.textContent}`;
-                    document.getElementById('error').style.display = 'block';
-                    document.getElementById('loading').style.display = 'none';
-                    return;
-                }
+            const micModel = document.getElementById('mic-model').value.trim();
+            const songStyle = document.getElementById('song-style').value.trim();
+            if (!micModel) {
+                document.getElementById('error').textContent = "请填写话筒型号！";
+                document.getElementById('error').style.display = 'block';
+                document.getElementById('loading').style.display = 'none';
+                return;
+            }
+            if (!songStyle) {
+                document.getElementById('error').textContent = "请填写歌曲风格！";
+                document.getElementById('error').style.display = 'block';
+                document.getElementById('loading').style.display = 'none';
+                return;
             }
 
-            // 构建表单数据
-            const formData = new FormData();
-            formData.append('mic_model', document.getElementById('mic-model').value.trim());
-            formData.append('phone_system', document.getElementById('phone-system').value);
-            formData.append('usage', document.getElementById('usage').value);
-            formData.append('song_style', document.getElementById('song-style').value.trim());
-            formData.append('noise_level', document.getElementById('noise-level').value);
-            formData.append('voice_type', document.getElementById('voice-type').value);
-            formData.append('voice_problem', document.getElementById('voice-problem').value.trim());
-            
-            // 添加音频文件
+            // 收集表单数据
+            const formData = {
+                micModel: micModel,
+                phoneSystem: document.getElementById('phone-system').value,
+                usage: document.getElementById('usage').value,
+                songStyle: songStyle,
+                noiseLevel: document.getElementById('noise-level').value,
+                voiceType: document.getElementById('voice-type').value,
+                voiceProblem: document.getElementById('voice-problem').value.trim()
+            };
+
+            // 处理音频文件
+            let audioFeatures = null;
             const audioFile = document.getElementById('audio-file').files[0];
             if (audioFile) {
-                // 限制文件大小（Vercel免费版单文件最大5MB）
+                // 检查文件大小
                 if (audioFile.size > 5 * 1024 * 1024) {
                     document.getElementById('error').textContent = "音频文件大小不能超过5MB，请压缩后上传！";
                     document.getElementById('error').style.display = 'block';
                     document.getElementById('loading').style.display = 'none';
                     return;
                 }
-                formData.append('audio_file', audioFile);
-            }
-
-            try {
-                // 调用Vercel API
-                const response = await fetch(API_URL, {
-                    method: 'POST',
-                    body: formData
-                });
-
-                const resData = await response.json();
-                if (resData.code === 200) {
-                    // 显示音频分析结果
-                    if (resData.audio_features && resData.audio_features.success) {
-                        const af = resData.audio_features;
+                // 解析音频
+                try {
+                    audioFeatures = await extractAudioFeatures(audioFile);
+                    if (audioFeatures.success) {
+                        // 显示音频分析结果
                         document.getElementById('audio-analysis').innerHTML = `
                             🎵 音频深度解析结果：<br>
-                            - 音频时长：${af.duration.toFixed(1)}秒<br>
-                            - 噪音能量：${(af.noise_energy * 100).toFixed(2)}%（值越高噪音越大）<br>
-                            - 人声平均音量：${af.voice_avg_volume.toFixed(1)}dB<br>
-                            - 人声峰值音量：${af.voice_peak_volume.toFixed(1)}dB<br>
-                            - 人声动态范围：${af.voice_dynamic_range.toFixed(1)}dB<br>
-                            - 人声高频能量：${(af.high_freq_energy + 80).toFixed(2)}%（相对值）<br>
-                            - 人声平均基频：${af.f0_mean.toFixed(0)}Hz（值越高音越高）
+                            - 音频时长：${audioFeatures.duration}秒<br>
+                            - 噪音能量：${audioFeatures.noiseEnergy}%（值越高噪音越大）<br>
+                            - 人声平均音量：${audioFeatures.voiceAvgVolume}dB<br>
+                            - 人声峰值音量：${audioFeatures.voicePeakVolume}dB<br>
+                            - 人声动态范围：${audioFeatures.voiceDynamicRange}dB<br>
+                            - 人声高频能量：${audioFeatures.highFreqEnergy}%（相对值）
                         `;
                         document.getElementById('audio-analysis').style.display = 'block';
+                    } else {
+                        document.getElementById('error').textContent = audioFeatures.error;
+                        document.getElementById('error').style.display = 'block';
                     }
-
-                    // 渲染参数
-                    document.getElementById('basic-knobs').textContent = resData.params.basic_knobs;
-                    document.getElementById('noise-reduction').textContent = resData.params.noise_reduction;
-                    document.getElementById('eq-params').textContent = resData.params.eq_params;
-                    document.getElementById('compressor-params').textContent = resData.params.compressor_params;
-                    document.getElementById('reverb-params').textContent = resData.params.reverb_params;
-                    document.getElementById('optimize-tips').textContent = resData.params.optimize_tips;
-
-                    // 显示结果
-                    document.getElementById('result-area').style.display = 'block';
-                    document.getElementById('result-area').scrollIntoView({ behavior: 'smooth' });
-                } else {
-                    throw new Error(resData.msg || "参数生成失败");
+                } catch (e) {
+                    document.getElementById('error').textContent = `音频解析失败：${e.message}`;
+                    document.getElementById('error').style.display = 'block';
                 }
-            } catch (e) {
-                document.getElementById('error').textContent = `错误：${e.message}`;
-                document.getElementById('error').style.display = 'block';
-            } finally {
-                document.getElementById('loading').style.display = 'none';
             }
+
+            // 生成参数
+            const params = generateSo8Params(formData, audioFeatures);
+
+            // 渲染结果
+            document.getElementById('basic-knobs').textContent = params.basicKnobs;
+            document.getElementById('noise-reduction').textContent = params.noiseReduction;
+            document.getElementById('eq-params').textContent = params.eqParams;
+            document.getElementById('compressor-params').textContent = params.compressorParams;
+            document.getElementById('reverb-params').textContent = params.reverbParams;
+            document.getElementById('optimize-tips').textContent = params.optimizeTips;
+
+            // 显示结果
+            document.getElementById('result-area').style.display = 'block';
+            document.getElementById('loading').style.display = 'none';
         });
     </script>
 </body>
-
 </html>
-
