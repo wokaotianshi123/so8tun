@@ -28,7 +28,7 @@
 			]
 		}
 	],
-	"functions": {
+	"functions": { 
 		"api/generate_params.py": {
 			"runtime": "python3.10",
 			"memory": 1024,
@@ -36,3 +36,4 @@
 		}
 	}
 }
+
