@@ -194,45 +194,90 @@
     </div>
 
     <script>
-        // 前端音频特征提取（Web Audio API）
+        // 工具函数：安全计算数组最大值（避免栈溢出）
+        function safeMax(arr) {
+            if (arr.length === 0) return 0;
+            let max = arr[0];
+            for (let i = 1; i < arr.length; i++) {
+                if (Math.abs(arr[i]) > Math.abs(max)) {
+                    max = arr[i];
+                }
+            }
+            return Math.abs(max);
+        }
+
+        // 工具函数：安全计算数组最小值（避免栈溢出）
+        function safeMin(arr) {
+            if (arr.length === 0) return 1e-8;
+            let min = arr[0];
+            for (let i = 1; i < arr.length; i++) {
+                if (Math.abs(arr[i]) < Math.abs(min) && arr[i] > 0) {
+                    min = arr[i];
+                }
+            }
+            return Math.abs(min);
+        }
+
+        // 前端音频特征提取（优化栈溢出问题）
         async function extractAudioFeatures(audioFile) {
             try {
                 const audioContext = new (window.AudioContext || window.webkitAudioContext)();
                 const arrayBuffer = await audioFile.arrayBuffer();
                 const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
                 
-                // 获取单声道数据
+                // 获取单声道数据并限制最大长度（避免超大数组）
                 const channelData = audioBuffer.getChannelData(0);
                 const sampleRate = audioBuffer.sampleRate;
                 const duration = audioBuffer.duration;
 
+                // 限制音频数据最大长度（60秒 @ 44.1kHz = 2,646,000 采样点）
+                const maxDataLength = 60 * sampleRate;
+                const limitedData = channelData.length > maxDataLength 
+                    ? channelData.slice(0, maxDataLength) 
+                    : channelData;
+
                 // 1. 噪音段（前10秒）
-                const noiseFrames = Math.min(Math.floor(10 * sampleRate), channelData.length);
-                const noiseData = channelData.slice(0, noiseFrames);
-                const noiseEnergy = noiseData.reduce((sum, val) => sum + Math.abs(val), 0) / (noiseFrames || 1);
+                const noiseFrames = Math.min(Math.floor(10 * sampleRate), limitedData.length);
+                const noiseData = limitedData.slice(0, noiseFrames);
+                let noiseEnergy = 0;
+                for (let i = 0; i < noiseData.length; i++) {
+                    noiseEnergy += Math.abs(noiseData[i]);
+                }
+                noiseEnergy /= (noiseFrames || 1);
 
                 // 2. 人声段（10秒后）
                 const voiceStart = Math.max(Math.floor(10 * sampleRate), 0);
-                const voiceEnd = Math.min(Math.floor(60 * sampleRate), channelData.length);
-                const voiceData = voiceEnd > voiceStart ? channelData.slice(voiceStart, voiceEnd) : channelData;
+                const voiceEnd = Math.min(Math.floor(60 * sampleRate), limitedData.length);
+                const voiceData = voiceEnd > voiceStart ? limitedData.slice(voiceStart, voiceEnd) : limitedData;
                 
-                // 音量计算（RMS）
-                const voiceRms = Math.sqrt(voiceData.reduce((sum, val) => sum + val * val, 0) / (voiceData.length || 1));
+                // 音量计算（RMS，优化循环）
+                let voiceSumSq = 0;
+                for (let i = 0; i < voiceData.length; i++) {
+                    voiceSumSq += voiceData[i] * voiceData[i];
+                }
+                const voiceRms = Math.sqrt(voiceSumSq / (voiceData.length || 1));
                 const voiceAvgVolume = 20 * Math.log10(voiceRms + 1e-8);
-                const voicePeak = Math.max(...voiceData.map(Math.abs));
+                
+                // 安全计算峰值/谷值（避免扩展运算符）
+                const voicePeak = safeMax(voiceData);
                 const voicePeakVolume = 20 * Math.log10(voicePeak + 1e-8);
-                const voiceMin = Math.min(...voiceData.filter(val => val > 0).map(Math.abs));
+                const voiceMin = safeMin(voiceData.filter(val => val > 0));
                 const voiceMinVolume = 20 * Math.log10((voiceMin || 1e-8) + 1e-8);
                 const voiceDynamicRange = voicePeakVolume - voiceMinVolume;
 
-                // 高频能量（采样点变化率）
+                // 高频能量（优化循环，分片计算）
                 let highFreqEnergy = 0;
                 if (voiceData.length > 1) {
                     let diffSum = 0;
-                    for (let i = 1; i < voiceData.length; i++) {
-                        diffSum += Math.abs(voiceData[i] - voiceData[i-1]);
+                    // 分片处理（每1000个采样点为一片）
+                    const chunkSize = 1000;
+                    for (let i = 0; i < voiceData.length - 1; i += chunkSize) {
+                        const end = Math.min(i + chunkSize, voiceData.length - 1);
+                        for (let j = i; j < end; j++) {
+                            diffSum += Math.abs(voiceData[j + 1] - voiceData[j]);
+                        }
                     }
-                    highFreqEnergy = diffSum / (voiceData.length - 1);
+                    highFreqEnergy = diffSum / (voiceData.length - 1 || 1);
                 }
 
                 return {
@@ -247,7 +292,7 @@
             } catch (e) {
                 return {
                     success: false,
-                    error: `音频解析失败：${e.message}`
+                    error: `音频解析失败：${e.message}（建议尝试更短的音频或转换格式）`
                 };
             }
         }
@@ -420,7 +465,7 @@
                         document.getElementById('error').style.display = 'block';
                     }
                 } catch (e) {
-                    document.getElementById('error').textContent = `音频解析失败：${e.message}`;
+                    document.getElementById('error').textContent = `音频解析失败：${e.message}（建议尝试转换为标准WAV格式）`;
                     document.getElementById('error').style.display = 'block';
                 }
             }
