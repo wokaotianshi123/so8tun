@@ -1,3 +1,3 @@
-# 移除 Librosa/SciPy，仅保留必要依赖
 numpy==1.26.4
 python-multipart==0.0.6
+pydub==0.25.1  # 轻量MP3解析库，依赖ffmpeg（Vercel已预装）
